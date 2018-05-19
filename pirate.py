@@ -3,7 +3,6 @@ import hashlib
 import rpyc
 from rpyc.utils.server import ThreadedServer
 from rpyc.utils.factory import discover
-from rpyc.utils.helpers import async
 import logging
 import time
 
@@ -109,7 +108,7 @@ class PirateService(rpyc.Service):
         pirates = sorted(pirates)
         logger.debug('Sorted pirates: %s', pirates)
         self.leader = (pirates[0][0], pirates[0][1])
-        logger.info('Found a new leader:', self.leader)
+        logger.info('Found a new leader: %s', self.leader)
         for pirate in pirates:
             if (self.exposed_host(), self.exposed_port()) != pirate:
                 c = rpyc.connect(pirate[0], pirate[1])
@@ -133,21 +132,28 @@ class PirateService(rpyc.Service):
         return server.port
 
     def distribute_work(self, clues):
+        logger.info('Starting work distribution')
         pirates = discover('Pirate')
-        connections = [rpyc.connect(pirate[0], pirate[1]) for pirate in pirates]
-        tasks = [[] for _ in range(len(connections))]
+        tasks = [[] for _ in range(len(pirates))]
+        logger.debug('Empty tasklists: %s', tasks)
         logger.info('Evenly splitting up the clues')
-        for index, clue in enumerate(clues):
+        logger.debug('All clues: %s', clues)
+        for index, clue in enumerate(clues["data"]):
             tasks[index % len(tasks)].append(clue)
-        for index, c in enumerate(connections):
-            # get_pending = c.root.get_pending
-            # p = get_pending()
-            # tasks.append(p)
-            # for c in connections:
-            logger.info('Sending clues to pirate at %s', pirates[index])
-            request = async(c.root.solve_all)
-            result = request(tasks[index])
-            result.add_callback(self.add_to_queue)
+        logger.debug(tasks)
+        myindex = 0
+        for index, pirate in enumerate(pirates):
+            if pirate == (self.exposed_host(), self.exposed_port()):
+                myindex = index
+                logger.debug('My index: %s', myindex)
+                continue
+            else:
+                logger.info('Sending clues to pirate at %s', pirates[index])
+                c = rpyc.connect(pirate[0], pirate[1])
+                request = rpyc.async(c.root.solve_all)
+                result = request(tasks[index])
+                result.add_callback(self.add_to_queue)
+        self.exposed_solve_all(tasks[myindex])
 
     def add_to_queue(self, result):
         logger.info('Adding clues to queue')
@@ -161,16 +167,17 @@ class PirateService(rpyc.Service):
             logger.info('Finished, closing servers')
             pirates = discover('Pirate')
             for pirate in pirates:
-                c = rpyc.connect(pirate[0], pirate[1])
-                stop = async(c.root.close_server)
-                stop()
+                if (self.exposed_host(), self.exposed_port()) != pirate:
+                    c = rpyc.connect(pirate[0], pirate[1])
+                    stop = rpyc.async(c.root.close_server)
+                    stop()
         else:
             logger.info('Redistributing clues again')
             self.distribute_work(results.value)
 
     def verify(self):
         data = [{"id": key, "data": self.solved[key]} for key in self.solved]
-        request = async(rummy.root.verify)
+        request = rpyc.async(rummy.root.verify)
         request(data)
         request.add_callback(self.redistribute)
 
