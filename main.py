@@ -75,7 +75,7 @@ if __name__ == '__main__':
     leader_details = elect_leader()
     logger.info('Leader: {}'.format(str(leader_details)))
     leader = rpyc.connect(leader_details[0], leader_details[1])
-    start = leader.root.start
+    start = rpyc.async(leader.root.start)
     ship_out()
     start()
     # for pid in pids:
