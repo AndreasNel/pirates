@@ -8,10 +8,9 @@ import logging
 import time
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-# create console handler and set level to debug
+logger.setLevel(logging.INFO)
 ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
+ch.setLevel(logging.INFO)
 # create formatter
 formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
 # add formatter to ch
@@ -188,8 +187,7 @@ class PirateService(rpyc.Service):
         result = self.dig_sand(result)
         result = self.search_river(result)
         result = self.crawl_into_cave(result)
-        result = hashlib.md5(result.encode('utf-8')).hexdigest()
-        result = result.upper()
+        result = hashlib.md5(result.encode('utf-8')).hexdigest().upper()
         logger.info('Solved')
         return {"id": clue_id, "key": result}
 
@@ -206,19 +204,17 @@ class PirateService(rpyc.Service):
         except Exception:
             finished = False
         if finished:
-            logger.info("Finally I'm done. Time to kill every pirate on the ship except the captain and the quartermaster.")
+            logger.info("Finally I'm done. Now to do Captain Rummy's dirty work. Time to kill the crew.")
             pirates = discover('Pirate')
-            requests = []
             for pirate in pirates:
                 if pirate != (self.exposed_host(), self.exposed_port()):
                     c = rpyc.connect(pirate[0], pirate[1])
                     kill = rpyc.async(c.root.close_server)
-                    result = kill()
-                    requests.append(result)
-            for request in requests:
-                logger.debug('Waiting for request to finish...')
-                request.wait()
-            logger.info('Committing suicide...')
+                    kill()
+            logger.info('And now that bastard of a quartermaster.')
+            kill = rpyc.async(rummy.root.close_server)
+            kill()
+            logger.info("Wait, Captain Rummy, don't shoot! What about our pla--?")
             self.exposed_close_server()
         else:
             logger.info("Not finished, redistributing failed clues")
@@ -228,7 +224,6 @@ class PirateService(rpyc.Service):
         logger.info('Shutting down...')
         server.close()
 
-
 if __name__ == '__main__':
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
@@ -237,6 +232,6 @@ if __name__ == '__main__':
     leader = tuple()
     pirate_id = None
     rummy_details = discover('Rummy')
-    rummy = rpyc.connect(rummy_details[0][0], rummy_details[0][1], keepalive=True)
+    rummy = rpyc.connect(rummy_details[0][0], rummy_details[0][1])
     server = ThreadedServer(PirateService, auto_register=True, logger=logger)
     server.start()

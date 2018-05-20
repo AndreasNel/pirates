@@ -27,9 +27,6 @@ if __name__ == '__main__':
     logger.info('Rummy running on {}:{}'.format(rummy[0], rummy[1]))
     # Connect to the rummy service
     c = rpyc.connect(rummy[0], rummy[1], config={"logger": logger})
-    # c.modules.sys.stdout = sys.stdout
-    # out = c.root.out
-    # out(sys.stdout)
     # Set the netrefs
     wake = c.root.wake
     unlock = c.root.unlock

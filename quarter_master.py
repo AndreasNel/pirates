@@ -78,9 +78,7 @@ class RummyService(rpyc.Service):
 
     def exposed_verify(self, clues):
         logger.info('Verifying %s clues for pirate %s', len(clues["data"]), clues["id"])
-        logger.debug(type(clues))
         clues = dict({key: clues[key] for key in clues})
-        logger.debug(type(clues))
         output = subprocess.getoutput('python3 rummy.pyc -verify {}'.format(json.dumps(str(clues))))
         output = json.loads(output)
         try:
@@ -91,7 +89,11 @@ class RummyService(rpyc.Service):
             logger.info("%s: %s", output["status"], output["message"])
         return output
 
+    def exposed_close_server(self):
+        logger.info('Shutting down...')
+        server.close()
 
 if __name__ == '__main__':
     logger.info('Now we know where the captain is...')
-    ThreadedServer(RummyService, auto_register=True).start()
+    server = ThreadedServer(RummyService, auto_register=True)
+    server.start()

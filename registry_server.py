@@ -14,7 +14,12 @@ ch.setFormatter(formatter)
 # add ch to logger
 logger.addHandler(ch)
 
+class PirateWatch(UDPRegistryServer):
+    def on_service_removed(self, name, addrinfo):
+        if not self.services.items():
+            logger.info('All services have deregistered')
+            self.close()
 
 if __name__ == '__main__':
     logger.info('Starting up UDP registry server...')
-    UDPRegistryServer(logger=logger).start()
+    PirateWatch(logger=logger).start()
