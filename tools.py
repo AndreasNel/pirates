@@ -56,7 +56,7 @@ def rope(clue):
 
 def torch(clue):
     x = sum(int(i) for i in clue if i.isdigit())
-    x = str(x << 1 if x < 100 else x)
+    x = str(x ** 2 if x < 100 else x)
     x = ("F9E8D7" + x[1:]) if len(x) < 10 else (x[6:] + "A1B2C3")
     return x
 

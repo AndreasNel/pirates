@@ -4,17 +4,12 @@ from rpyc.utils.factory import discover
 import logging
 import subprocess
 
-# create logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-# create console handler and set level to debug
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-# create formatter
 formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
-# add formatter to ch
 ch.setFormatter(formatter)
-# add ch to logger
 logger.addHandler(ch)
 
 DEV_MODE = True
@@ -52,11 +47,11 @@ if __name__ == '__main__':
     msg = prepare()
     logger.info(msg)
 
-    crew = add(psutil.cpu_count(logical=True))
+    pirate_servers = discover('Pirate')
+    crew = add(len(pirate_servers))
     logger.info('Got crew: %s', crew)
     ship_out()
 
-    pirate_servers = discover('Pirate')
     logger.info('All pirates: {}'.format(pirate_servers))
     for server in pirate_servers:
         logger.info('Connecting to {}:{}'.format(server[0], server[1]))

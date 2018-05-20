@@ -8,14 +8,11 @@ import logging
 import time
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-# create formatter
+ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
-# add formatter to ch
 ch.setFormatter(formatter)
-# add ch to logger
 logger.addHandler(ch)
 
 
@@ -76,7 +73,7 @@ class PirateService(rpyc.Service):
         global leader
         logger.info('Electing a new leader')
         pirates = discover('Pirate')
-        logger.debug('Pirates available: %s', pirates)
+        logger.info('Pirates available: %s', pirates)
         pirates = sorted(pirates)
         logger.debug('Sorted pirates: %s', pirates)
         leader = (pirates[0][0], pirates[0][1])
@@ -106,17 +103,17 @@ class PirateService(rpyc.Service):
         This method expects pirate_data to be of the form [{"id": pirate_id, "data": [{"id": clue_id, "data": clue_data}]}].
         """
         logger.info('Starting work distribution')
-        logger.debug("Number of pirates: %s", len(pirate_data))
+        logger.info("Number of pirates: %s", len(pirate_data))
         all_clues = []
         for pirate in pirate_data:
             logger.debug("Adding %s to global clue list", len(pirate["data"]))
             all_clues.extend(pirate["data"])
         logger.info("Number of clues to be distributed: %s", len(all_clues))
         pirates = discover("pirate")
-        logger.debug("Found pirates: %s", pirates)
+        logger.info("Found pirates: %s", pirates)
         logger.info("Splitting the clues into %s chunks", len(pirates) - 1)
         chunks = list([all_clues[i::len(pirates)-1] for i in range(len(pirates) - 1)])
-        logger.debug("Split into %s chunks", len(chunks))
+        logger.info("Split into %s chunks", len(chunks))
         for chunk in chunks:
             logger.debug("Chunk length: %s", len(chunk))
         logger.debug('All pirates: %s', pirates)
@@ -132,14 +129,15 @@ class PirateService(rpyc.Service):
                 result = give_clues(clues)
                 requests.append(result)
         for r in requests:
-            logger.debug('Waiting for request to finish...')
+            logger.info('Waiting for request to finish...')
             r.wait()
 
-    def exposed_set_clues(self, clues):
+    def exposed_set_clues(self, data):
         """
         This method expects clues to be of the form [{"id": clue_id, "data": clue_data}]
         """
         logger.info("I've got clues apparently")
+        clues = data[:]
         if len(clues):
             summary = { "id": self.exposed_get_id(), "data": clues }
             logger.debug("%s: %s clues", summary["id"], len(summary["data"]))
@@ -182,13 +180,12 @@ class PirateService(rpyc.Service):
         """
         clue_id = clue["id"]
         clue_data = clue["data"]
-        logger.debug('Solving clue ID %s, length of clue: %s', clue_id, len(clue_data))
+        logger.info('Solving clue ID %s, length of clue: %s', clue_id, len(clue_data))
         result = clue_data
         result = self.dig_sand(result)
         result = self.search_river(result)
         result = self.crawl_into_cave(result)
         result = hashlib.md5(result.encode('utf-8')).hexdigest().upper()
-        logger.info('Solved')
         return {"id": clue_id, "key": result}
 
     def exposed_verify(self, data):
