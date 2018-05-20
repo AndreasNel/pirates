@@ -1,8 +1,6 @@
-import psutil
 import rpyc
 from rpyc.utils.factory import discover
 import logging
-import subprocess
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -12,11 +10,10 @@ formatter = logging.Formatter('%(asctime)s: (main) %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-DEV_MODE = True
+DEV_MODE = False
 
 if __name__ == '__main__':
     # Start the quartermaster service
-    subprocess.Popen('python captain.py', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     qm_servers = discover('QuarterMaster')
     qm = qm_servers[0]
     logger.info('Quartermaster running on {}:{}'.format(qm[0], qm[1]))
@@ -39,17 +36,18 @@ if __name__ == '__main__':
     logger.info('Unlocking all locks...')
     msg = unlock()
     logger.info(msg)
-    # if DEV_MODE:
-    #     gather(1)
-    # else:
-    #     gather()
+    logger.info('Gathering clues...')
+    if DEV_MODE:
+        gather(1)
+    else:
+        gather()
     logger.info('Preparing for the journey...')
     msg = prepare()
     logger.info(msg)
 
     pirate_servers = discover('Pirate')
     if (len(pirate_servers) < 2):
-        raise Exception('You cannot start a distributed system with less than two agents to do the job. Are you trying to be funny or what?')
+        raise Exception('You cannot start this distributed system with less than two pirates to do the job.')
     crew = add(len(pirate_servers))
     logger.info('Got crew: %s', crew)
     ship_out()
