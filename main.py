@@ -8,20 +8,20 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s: (main) %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 DEV_MODE = True
 
 if __name__ == '__main__':
-    # Start the rummy service
+    # Start the quartermaster service
     subprocess.Popen('python captain.py', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    rummy_servers = discover('Rummy')
-    rummy = rummy_servers[0]
-    logger.info('Rummy running on {}:{}'.format(rummy[0], rummy[1]))
-    # Connect to the rummy service
-    c = rpyc.connect(rummy[0], rummy[1], config={"logger": logger})
+    qm_servers = discover('QuarterMaster')
+    qm = qm_servers[0]
+    logger.info('Quartermaster running on {}:{}'.format(qm[0], qm[1]))
+    # Connect to the qm service
+    c = rpyc.connect(qm[0], qm[1], config={"logger": logger})
     # Set the netrefs
     wake = c.root.wake
     unlock = c.root.unlock
@@ -48,6 +48,8 @@ if __name__ == '__main__':
     logger.info(msg)
 
     pirate_servers = discover('Pirate')
+    if (len(pirate_servers) < 2):
+        raise Exception('You cannot start a distributed system with less than two agents to do the job. Are you trying to be funny or what?')
     crew = add(len(pirate_servers))
     logger.info('Got crew: %s', crew)
     ship_out()

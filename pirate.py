@@ -11,7 +11,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s: (Pirate) %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
@@ -93,7 +93,7 @@ class PirateService(rpyc.Service):
 
     def exposed_start(self):
         logger.info('This is the leader, starting the process')
-        get_clues = rummy.root.clues
+        get_clues = qm.root.clues
         result = get_clues()
         logger.info('%s: %s', result["status"], result["message"])
         self.distribute_work(result["data"])
@@ -119,7 +119,6 @@ class PirateService(rpyc.Service):
         logger.debug('All pirates: %s', pirates)
         logger.debug('Leader: %s', leader)
         logger.debug('My host and port: %s', (self.exposed_host(), self.exposed_port()))
-        requests = []
         for pirate in pirates:
             if pirate != (self.exposed_host(), self.exposed_port()):
                 logger.info("Sending clues to pirate at %s", pirate)
@@ -127,17 +126,14 @@ class PirateService(rpyc.Service):
                 give_clues = rpyc.async(c.root.set_clues)
                 clues = chunks.pop()
                 result = give_clues(clues)
-                requests.append(result)
-        for r in requests:
-            logger.info('Waiting for request to finish...')
-            r.wait()
+                result.wait()
 
     def exposed_set_clues(self, data):
         """
         This method expects clues to be of the form [{"id": clue_id, "data": clue_data}]
         """
         logger.info("I've got clues apparently")
-        clues = data[:]
+        clues = data
         if len(clues):
             summary = { "id": self.exposed_get_id(), "data": clues }
             logger.debug("%s: %s clues", summary["id"], len(summary["data"]))
@@ -193,7 +189,7 @@ class PirateService(rpyc.Service):
         This method expects data to be of the form {"id": pirate_id, "data": [{"id": clue_id, "data": clue_data}]}
         """
         logger.info('Verifying with the captain...')
-        request = rummy.root.verify
+        request = qm.root.verify
         results = request(data)
         logger.info("%s: %s", results["status"], results["message"])
         try:
@@ -201,7 +197,7 @@ class PirateService(rpyc.Service):
         except Exception:
             finished = False
         if finished:
-            logger.info("Finally I'm done. Now to do Captain Rummy's dirty work. Time to kill the crew.")
+            logger.info("Finally I'm done. Now to do Captain Rummy's dirty work so that we can split the treasure. Time to kill the crew.")
             pirates = discover('Pirate')
             for pirate in pirates:
                 if pirate != (self.exposed_host(), self.exposed_port()):
@@ -209,26 +205,35 @@ class PirateService(rpyc.Service):
                     kill = rpyc.async(c.root.close_server)
                     kill()
             logger.info('And now that bastard of a quartermaster.')
-            kill = rpyc.async(rummy.root.close_server)
+            kill = rpyc.async(qm.root.close_server)
             kill()
             logger.info("Wait, Captain Rummy, don't shoot! What about our pla--?")
             self.exposed_close_server()
         else:
-            logger.info("Not finished, redistributing failed clues")
-            self.distribute_work(results["data"])
+            try:
+                data = results["data"]
+            except:
+                logger.info("I'm done, I wonder what the others are up to...")
+                data = []
+            if data:
+                logger.info("Not finished, redistributing failed clues")
+                self.distribute_work(results["data"])
 
     def exposed_close_server(self):
         logger.info('Shutting down...')
         server.close()
 
 if __name__ == '__main__':
+    # Get the local IP address of this pirate. The ThreadedServer#server attribute is not used, due to it always returning '0.0.0.0'.
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
     myhost = s.getsockname()[0]
     s.close()
     leader = tuple()
     pirate_id = None
-    rummy_details = discover('Rummy')
-    rummy = rpyc.connect(rummy_details[0][0], rummy_details[0][1])
+    qm_details = discover('QuarterMaster')
+    if len(qm_details) != 1:
+        raise Exception('One and only one quartermaster should exist before trying to wake a pirate up')
+    qm = rpyc.connect(qm_details[0][0], qm_details[0][1])
     server = ThreadedServer(PirateService, auto_register=True, logger=logger)
     server.start()

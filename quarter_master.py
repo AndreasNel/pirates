@@ -8,13 +8,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s: (%(name)s) %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s: (QuarterMaster) %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
 
 
-class RummyService(rpyc.Service):
+class QuarterMasterService(rpyc.Service):
     def exposed_wake(self):
         logger.info('Waking the captain up...')
         output = subprocess.getoutput('python3 rummy.pyc -wake')
@@ -65,10 +65,9 @@ class RummyService(rpyc.Service):
         return output
 
     def exposed_clues(self, pirate_id=None):
-        logger.info('Getting clues for {}...'.format(pirate_id))
+        logger.info('Getting clues for {}...'.format(pirate_id if pirate_id else 'everyone'))
         output = subprocess.getoutput('python3 rummy.pyc -clues {}'.format(pirate_id if pirate_id else ''))
         output = json.loads(output)
-        # logger.info(output)
         return output
 
     def exposed_verify(self, clues):
@@ -82,6 +81,8 @@ class RummyService(rpyc.Service):
                 logger.info("Number of clues for pirate %s: %s", pirate["id"], len(pirate["data"]))
         except:
             logger.info("%s: %s", output["status"], output["message"])
+        if output["message"] == "Argghh, the captain has determined that all keys for the given map are correct. Here is the next map.":
+            output = self.exposed_clues()
         return output
 
     def exposed_close_server(self):
@@ -90,5 +91,5 @@ class RummyService(rpyc.Service):
 
 if __name__ == '__main__':
     logger.info('Now we know where the captain is...')
-    server = ThreadedServer(RummyService, auto_register=True)
+    server = ThreadedServer(QuarterMasterService, auto_register=True)
     server.start()
