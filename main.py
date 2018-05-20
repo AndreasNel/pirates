@@ -47,21 +47,17 @@ if __name__ == '__main__':
     logger.info('Unlocking all locks...')
     msg = unlock()
     logger.info(msg)
-    if DEV_MODE:
-        gather(1)
-    else:
-        gather()
+    # if DEV_MODE:
+    #     gather(1)
+    # else:
+    #     gather()
     logger.info('Preparing for the journey...')
     msg = prepare()
     logger.info(msg)
 
     crew = add(psutil.cpu_count(logical=True))
     logger.info('Got crew: %s', crew)
-    # pids = []
-    # for crew_member in crew['data']:
-    #     logger.info('Signing up {}'.format(crew_member))
-    #     pid = subprocess.Popen('python pirate.py', stdout=subprocess.PIPE)
-    #     pids.append(pid)
+    ship_out()
 
     pirate_servers = discover('Pirate')
     logger.info('All pirates: {}'.format(pirate_servers))
@@ -70,33 +66,10 @@ if __name__ == '__main__':
         conn = rpyc.connect(server[0], server[1])
         set_id = conn.root.set_id
         set_id(crew['data'][pirate_servers.index(server)])
-    first_mate = rpyc.connect(pirate_servers[0][0], pirate_servers[0][1])
-    elect_leader = first_mate.root.elect_leader
+    random_pirate = rpyc.connect(pirate_servers[0][0], pirate_servers[0][1])
+    elect_leader = random_pirate.root.elect_leader
     leader_details = elect_leader()
     logger.info('Leader: {}'.format(str(leader_details)))
     leader = rpyc.connect(leader_details[0], leader_details[1])
     start = rpyc.async(leader.root.start)
-    ship_out()
     start()
-    # for pid in pids:
-    #     os.kill(pid)
-
-    # num_pirates = psutil.cpu_count(logical=True)
-    # with open('data/clues/1.map', 'r') as file:
-    #     clue = file.read()
-    #     servers = discover('Pirate')
-    #     logger.info('Discovered servers: %s', servers)
-    #     connections = []
-    #     for server in servers:
-    #         host, port = server
-    #         logger.info('Connecting to {host}:{port}'.format(host=host, port=port))
-    #         connections.append(rpyc.connect(host, port))
-    #     results = []
-    #     for c in connections:
-    #         logger.info('Sending clue...')
-    #         request = async(c.root.solve)
-    #         result = request(clue)
-    #         # result.add_callback(log)
-    #         results.append(result)
-    #     for r in results:
-    #         r.wait()

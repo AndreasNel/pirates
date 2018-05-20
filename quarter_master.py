@@ -73,14 +73,22 @@ class RummyService(rpyc.Service):
         logger.info('Getting clues for {}...'.format(pirate_id))
         output = subprocess.getoutput('python3 rummy.pyc -clues {}'.format(pirate_id if pirate_id else ''))
         output = json.loads(output)
-        logger.info(output)
+        # logger.info(output)
         return output
 
     def exposed_verify(self, clues):
-        logger.info('Verifying clues: {}'.format(str(clues)))
-        output = subprocess.getoutput('python3 rummy.pyc -verify {}'.format(json.dumps(clues)))
+        logger.info('Verifying %s clues for pirate %s', len(clues["data"]), clues["id"])
+        logger.debug(type(clues))
+        clues = dict({key: clues[key] for key in clues})
+        logger.debug(type(clues))
+        output = subprocess.getoutput('python3 rummy.pyc -verify {}'.format(json.dumps(str(clues))))
         output = json.loads(output)
-        logger.info(output)
+        try:
+            logger.info("%s: %s, number of pirates: %s", output["status"], output["message"], len(output["data"]))
+            for pirate in output["data"]:
+                logger.info("Number of clues for pirate %s: %s", pirate["id"], len(pirate["data"]))
+        except:
+            logger.info("%s: %s", output["status"], output["message"])
         return output
 
 

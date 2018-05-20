@@ -1,4 +1,5 @@
 from tools import shovel, rope, torch, bucket
+import socket
 import hashlib
 import rpyc
 from rpyc.utils.server import ThreadedServer
@@ -20,9 +21,23 @@ logger.addHandler(ch)
 
 
 class PirateService(rpyc.Service):
-    pirate_id = None
-    solved = []
-    leader = tuple()
+    def exposed_set_id(self, new_pirate_id):
+        global pirate_id
+        logger.debug('Setting ID: {}'.format(new_pirate_id))
+        pirate_id = new_pirate_id
+
+    def exposed_get_id(self):
+        global pirate_id
+        return pirate_id
+
+    def exposed_is_leader(self):
+        return (self.exposed_host(), self.exposed_port()) == leader
+
+    def exposed_host(self):
+        return myhost
+
+    def exposed_port(self):
+        return server.port
 
     def dig_sand(self, clue_string):
         logger.debug('Digging in the sand')
@@ -58,134 +73,156 @@ class PirateService(rpyc.Service):
             result = torch(result)
         return result
 
-    def exposed_solve_all(self, data):
-        logger.info('look here')
-        # logger.info(data)
-        logger.info(data)
-        logger.info('stop here')
-        return self.solve_all(data)
-
-    def solve_all(self, data):
-        pirate_id = data["id"]
-        clue_list = data["data"]
-        results = list([self.exposed_solve(clue) for clue in clue_list])
-        return {"id": pirate_id, "data": results}
-
-    def exposed_solve(self, clue):
-        # logger.debug(clue)
-        clue_id = clue["id"]
-        clue_data = clue["data"]
-        # logger.debug(clue_data)
-        # logger.debug(clue_id)
-        logger.info('Starting the solving process for clue %s', clue_id)
-        result = clue_data
-        result = self.dig_sand(result)
-        result = self.search_river(result)
-        result = self.crawl_into_cave(result)
-        logger.debug("Hashing")
-        result = hashlib.md5(result.encode('utf-8')).hexdigest()
-        result = result.upper()
-        logger.info('Solved')
-        return {"id": clue_id, "key": result}
-
-    def exposed_set_id(self, pirate_id):
-        logger.debug('Setting ID: {}'.format(pirate_id))
-        self.pirate_id = pirate_id
-
-    def exposed_get_id(self):
-        return self.pirate_id
-
-    def exposed_is_quartermaster(self):
-        return (self.exposed_host(), self.exposed_port()) == self.leader
-
     def exposed_elect_leader(self):
+        global leader
         logger.info('Electing a new leader')
         pirates = discover('Pirate')
         logger.debug('Pirates available: %s', pirates)
         pirates = sorted(pirates)
         logger.debug('Sorted pirates: %s', pirates)
-        self.leader = (pirates[0][0], pirates[0][1])
-        logger.info('Found a new leader: %s', self.leader)
+        leader = (pirates[0][0], pirates[0][1])
+        logger.info('Found a new leader: %s', leader)
         for pirate in pirates:
             if (self.exposed_host(), self.exposed_port()) != pirate:
                 c = rpyc.connect(pirate[0], pirate[1])
                 set_leader = c.root.set_leader
-                set_leader(self.leader)
-        return self.leader
+                set_leader(leader)
+        return leader
 
     def exposed_set_leader(self, l):
-        self.leader = l
+        global leader
+        logger.info('My leader is being changed to %s', l)
+        leader = l
+        logger.debug('My leader is: %s', leader)
 
     def exposed_start(self):
         logger.info('This is the leader, starting the process')
         get_clues = rummy.root.clues
         result = get_clues()
+        logger.info('%s: %s', result["status"], result["message"])
         self.distribute_work(result["data"])
 
-    def exposed_host(self):
-        return server.host
-
-    def exposed_port(self):
-        return server.port
-
-    def distribute_work(self, clues):
+    def distribute_work(self, pirate_data):
+        """
+        This method expects pirate_data to be of the form [{"id": pirate_id, "data": [{"id": clue_id, "data": clue_data}]}].
+        """
         logger.info('Starting work distribution')
-        logger.debug(len(clues))
-        for clue in clues:
-            logger.debug('pirate["id"]: %s', clue["id"])
-            logger.debug('num clues: %s', len(clue['data']))
-        pirates = discover('Pirate')
-        # tasks = []
-        # logger.debug('Empty tasklists: %s', tasks)
-        logger.info('Evenly splitting up the clues')
-        # logger.debug('All clues: %s', clues)
-        # for index, clue in enumerate(clues):
-            # logger.info('Appending clue: %s (%s clues)', clue["id"], len(clue["data"]))
-            # tasks.append(clue)
-        # logger.debug(len(tasks))
-        myindex = 0
-        for index, pirate in enumerate(pirates):
-            if pirate == (self.exposed_host(), self.exposed_port()):
-                myindex = index
-                logger.debug('My index: %s', myindex)
-                continue
-            else:
-                logger.info('Sending clues to pirate at %s', pirates[index])
+        logger.debug("Number of pirates: %s", len(pirate_data))
+        all_clues = []
+        for pirate in pirate_data:
+            logger.debug("Adding %s to global clue list", len(pirate["data"]))
+            all_clues.extend(pirate["data"])
+        logger.info("Number of clues to be distributed: %s", len(all_clues))
+        pirates = discover("pirate")
+        logger.debug("Found pirates: %s", pirates)
+        logger.info("Splitting the clues into %s chunks", len(pirates) - 1)
+        chunks = list([all_clues[i::len(pirates)-1] for i in range(len(pirates) - 1)])
+        logger.debug("Split into %s chunks", len(chunks))
+        for chunk in chunks:
+            logger.debug("Chunk length: %s", len(chunk))
+        logger.debug('All pirates: %s', pirates)
+        logger.debug('Leader: %s', leader)
+        logger.debug('My host and port: %s', (self.exposed_host(), self.exposed_port()))
+        requests = []
+        for pirate in pirates:
+            if pirate != (self.exposed_host(), self.exposed_port()):
+                logger.info("Sending clues to pirate at %s", pirate)
                 c = rpyc.connect(pirate[0], pirate[1])
-                request = rpyc.async(c.root.solve_all)
-                logger.debug('Number of clues to send: %s', len(clues[index]))
-                result = request(clues[index])
-                result.add_callback(self.exposed_verify)
-        logger.debug('Number of clues for me: %s', len(clues[myindex]))
-        myresults = self.solve_all(clues[myindex])
-        self.verify(myresults)
+                give_clues = rpyc.async(c.root.set_clues)
+                clues = chunks.pop()
+                result = give_clues(clues)
+                requests.append(result)
+        for r in requests:
+            logger.debug('Waiting for request to finish...')
+            r.wait()
 
-    def redistribute(self, results):
-        logger.debug('Redistribute method called')
-        if results.value.get('finished', False):
-            logger.info('Finished, closing servers')
+    def exposed_set_clues(self, clues):
+        """
+        This method expects clues to be of the form [{"id": clue_id, "data": clue_data}]
+        """
+        logger.info("I've got clues apparently")
+        if len(clues):
+            summary = { "id": self.exposed_get_id(), "data": clues }
+            logger.debug("%s: %s clues", summary["id"], len(summary["data"]))
+            self.solve_all(summary)
+
+    def solve_all(self, data):
+        """
+        This method expects data to be an object of the form {"id": pirate_id, "data": [{"id": clue_id, "data": clue_data}]}
+        """
+        logger.info("Solving all the clues")
+        pirate_id = data["id"]
+        logger.debug("pirate_id: %s", pirate_id)
+        clue_list = data["data"]
+        logger.debug("num clues: %s", len(clue_list))
+        results = list(self.solve(clue) for clue in clue_list)
+
+        summary = {"id": pirate_id, "data": results}
+        pirates = discover('Pirate')
+        first_mate = None
+        for pirate in pirates:
+            if pirate != (self.exposed_host(), self.exposed_port()):
+                c = rpyc.connect(pirate[0], pirate[1])
+                is_first_mate = c.root.is_leader
+                answer = is_first_mate()
+                if answer:
+                    first_mate = pirate
+                    break
+        while not first_mate:
+            logger.warn("No leader found, time to get a new one (%s)", self.exposed_get_id())
+            self.exposed_elect_leader()
+            first_mate = leader
+        c = rpyc.connect(first_mate[0], first_mate[1])
+        verify_clues = rpyc.async(c.root.verify)
+        result = verify_clues(summary)
+        result.wait()
+
+    def solve(self, clue):
+        """
+        This method expects clue to be an object of the form {"id": clue_id, "data": clue_data}
+        """
+        clue_id = clue["id"]
+        clue_data = clue["data"]
+        logger.debug('Solving clue ID %s, length of clue: %s', clue_id, len(clue_data))
+        result = clue_data
+        result = self.dig_sand(result)
+        result = self.search_river(result)
+        result = self.crawl_into_cave(result)
+        result = hashlib.md5(result.encode('utf-8')).hexdigest()
+        result = result.upper()
+        logger.info('Solved')
+        return {"id": clue_id, "key": result}
+
+    def exposed_verify(self, data):
+        """
+        This method expects data to be of the form {"id": pirate_id, "data": [{"id": clue_id, "data": clue_data}]}
+        """
+        logger.info('Verifying with the captain...')
+        request = rummy.root.verify
+        results = request(data)
+        logger.info("%s: %s", results["status"], results["message"])
+        try:
+            finished = results["finished"]
+        except Exception:
+            finished = False
+        if finished:
+            logger.info("Finally I'm done. Time to kill every pirate on the ship except the captain and the quartermaster.")
             pirates = discover('Pirate')
+            requests = []
             for pirate in pirates:
-                if (self.exposed_host(), self.exposed_port()) != pirate:
+                if pirate != (self.exposed_host(), self.exposed_port()):
                     c = rpyc.connect(pirate[0], pirate[1])
-                    stop = rpyc.async(c.root.close_server)
-                    stop()
+                    kill = rpyc.async(c.root.close_server)
+                    result = kill()
+                    requests.append(result)
+            for request in requests:
+                logger.debug('Waiting for request to finish...')
+                request.wait()
+            logger.info('Committing suicide...')
             self.exposed_close_server()
         else:
-            logger.info('Redistributing clues again')
-            new_clues = results.value["data"]
-            logger.debug('Redistibuting: %s', new_clues)
-            self.distribute_work(new_clues)
-
-    def exposed_verify(self, results):
-        logger.debug('Verify callback called...')
-        self.verify(results.value)
-
-    def verify(self, results):
-        logger.info('Verifying with the captain...')
-        request = rpyc.async(rummy.root.verify)
-        request(results)
-        request.add_callback(self.redistribute)
+            logger.info("Not finished, redistributing failed clues")
+            self.distribute_work(results["data"])
 
     def exposed_close_server(self):
         logger.info('Shutting down...')
@@ -193,7 +230,13 @@ class PirateService(rpyc.Service):
 
 
 if __name__ == '__main__':
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    myhost = s.getsockname()[0]
+    s.close()
+    leader = tuple()
+    pirate_id = None
     rummy_details = discover('Rummy')
-    rummy = rpyc.connect(rummy_details[0][0], rummy_details[0][1])
+    rummy = rpyc.connect(rummy_details[0][0], rummy_details[0][1], keepalive=True)
     server = ThreadedServer(PirateService, auto_register=True, logger=logger)
     server.start()
